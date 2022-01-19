@@ -112,6 +112,26 @@ var inject = '('+function() {
                 return devices;
             });
     };
+
+    // override addEventListener in order to allow injection of synthetic events using `fakeEmit`.
+    var __eventListeners = {};
+    var origAddEventListener = navigator.mediaDevices.addEventListener.bind(navigator.mediaDevices);
+    navigator.mediaDevices.addEventListener = function(name, handler) {
+        if (!__eventListeners[name]) {
+            __eventListeners[name] = [];
+        }
+        __eventListeners[name].push(handler);
+        return origAddEventListener(name, handler);
+    };
+
+    navigator.mediaDevices.fakeEmit = function(name, event) {
+        if (!__eventListeners[name]) {
+            return;
+        }
+        __eventListeners[name].forEach(function(listener) {
+            listener(event);
+        });
+    };
 }+')();';
 
 var script = document.createElement('script');
