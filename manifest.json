@@ -3,7 +3,7 @@
   "description": "change getUserMedia and enumerateDevices results on the fly",
   "author": "Philipp Hancke",
   "version": "1.0.0",
-  "manifest_version": 2,
+  "manifest_version": 3,
   "minimum_chrome_version": "34",
   "icons": {
   },
