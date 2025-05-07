@@ -2,13 +2,12 @@
  * https://github.com/karma-runner/karma/issues/1403
  */
 before((done) => {
-    if (document.readyState === 'complete') {
+    if (document.readyState === "complete") {
         done();
         return;
     }
 
-    document.addEventListener('DOMContentLoaded', function(event) {
+    document.addEventListener("DOMContentLoaded", function (event) {
         done();
     });
 });
-
