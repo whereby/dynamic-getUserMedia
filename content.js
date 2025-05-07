@@ -1,137 +1,49 @@
-const inject = '('+ async function() {
-    /* behaviour is controlled via sessionStorage. Remember it stores JSON...
-    sessionStorage.__getUserMediaAudioError = "NotAllowedError";
-    sessionStorage.__getUserMediaVideoError = "NotFoundError";
-    sessionStorage.__filterAudioDevices = true;
-    sessionStorage.__filterVideoDevices = true;
-    sessionStorage.__filterDeviceLabels = true;
-    */
+// This content script's primary role is now to tell the background script (or service worker in MV3)
+// to inject the main world script. However, since content scripts can use chrome.scripting.executeScript
+// directly if they have the "scripting" permission and matching host_permissions, we can do it here.
 
-    // override getUserMedia to inject errors.
-    const origGetUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
-    navigator.mediaDevices.getUserMedia = async (constraints) => {
-        let err;
+// Ensure this runs only once or as needed
+if (typeof window.myExtensionInjected === "undefined") {
+    window.myExtensionInjected = true; // Simple flag to prevent multiple injections if content.js runs multiple times
 
-        // for consistency with the device modifications reject with a NotFoundError.
-        if (constraints.audio && sessionStorage.__filterAudioDevices) {
-            err = new Error('getUserMedia error');
-            err.name = 'NotFoundError';
-            return Promise.reject(err);
-        }
-
-        var isScreenSharing = constraints.video && (constraints.video.mediaSource || constraints.video.mandatory && constraints.video.mandatory.chromeMediaSource);
-        if (constraints.video && sessionStorage.__filterVideoDevices && !isScreenSharing) {
-            err = new Error('getUserMedia error');
-            err.name = 'NotFoundError';
-            return Promise.reject(err);
-        }
-
-        // return errors
-        if (constraints.audio && sessionStorage.__getUserMediaAudioError) {
-            err = new Error('getUserMedia error');
-            err.name = sessionStorage.__getUserMediaAudioError;
-            return Promise.reject(err);
-        }
-        if (constraints.video && sessionStorage.__getUserMediaVideoError) {
-            err = new Error('getUserMedia error');
-            err.name = sessionStorage.__getUserMediaVideoError;
-            return Promise.reject(err);
-        }
-
-        if (constraints.video && constraints.video.deviceId &&
-                (constraints.video.deviceId.exact ? constraints.video.deviceId.exact.indexOf('dynamicGum:fake:') === 0 : constraints.video.deviceId.indexOf('dynamicGum:fake:') === 0)) {
-            const canvas = document.createElement('canvas');
-            canvas.width = 640; // TODO: actual width/height.
-            canvas.height = 480;
-            const ctx = canvas.getContext('2d', {alpha: false});
-            ctx.fillStyle = (constraints.video.deviceId.exact ? constraints.video.deviceId.exact : constraints.video.deviceId).substr(16);
-            ctx.fillRect(0,0,canvas.width, canvas.height);
-            const videoStream = canvas.captureStream();
-            const videoTrack = videoStream.getVideoTracks()[0];
-            delete constraints.video;
-            const stream = await origGetUserMedia(constraints);
-            stream.addTrack(videoTrack);
-            return stream;
-        }
-        return origGetUserMedia(constraints);
-    };
-
-    // override enumerateDevices to filter certain device kinds or return empty labels
-    // (which means no permission has been granted). Also returns empty labels
-    // and device ids when getUserMedia permission is denied via a session storage flag.
-    const origEnumerateDevices = navigator.mediaDevices.enumerateDevices.bind(navigator.mediaDevices);
-    navigator.mediaDevices.enumerateDevices = async () => {
-        let devices = await origEnumerateDevices();
-        if (sessionStorage.__filterVideoDevices) {
-            devices = devices.filter((device) => device.kind !== 'videoinput');
-        }
-        if (sessionStorage.__filterAudioDevices) {
-            devices = devices.filter((device) => device.kind !== 'audioinput');
-        }
-
-        devices = devices.map((device) => {
-            const deviceWithoutLabelAndDeviceId = {
-                deviceId: '',
-                kind: device.kind,
-                label: '',
-                groupId: device.groupId,
-            };
-
-            // Firefox does not like empty deviceId
-            if (navigator.mozGetUserMedia) {
-                deviceWithoutLabelAndDeviceId.deviceId = device.deviceId;
-            }
-
-            if (device.kind === 'audioinput' && sessionStorage.__getUserMediaAudioError === 'NotAllowedError') {
-                return deviceWithoutLabelAndDeviceId;
-            }
-
-            if (device.kind === 'videoinput' && sessionStorage.__getUserMediaVideoError === 'NotAllowedError') {
-                return deviceWithoutLabelAndDeviceId;
-            }
-
-            if (sessionStorage.__filterDeviceLabels) {
-                return deviceWithoutLabelAndDeviceId;
-            }
-
-            return device;
-        });
-        if (sessionStorage.__fakeVideoDevices) {
-            JSON.parse(sessionStorage.__fakeVideoDevices).forEach(function(fakeDeviceSpec) {
-                devices.push({
-                    deviceId: 'dynamicGum:fake:' + fakeDeviceSpec.color,
-                    kind: 'videoinput',
-                    label: fakeDeviceSpec.label,
-                    groupId: 'fake devices',
-                });
+    if (window.chrome?.scripting) {
+        window.chrome.scripting
+            .executeScript({
+                target: {
+                    tabId: chrome.devtools.inspectedWindow.tabId,
+                    allFrames: true,
+                }, // Get tabId dynamically if not in devtools context
+                // If not in devtools, you'll need to get the tabId
+                // via messages from a background script or other means
+                // depending on when/how content.js is triggered.
+                // For typical content scripts, this isn't directly available.
+                // Let's assume this content script is for the main frame
+                // and you want to inject into the current tab.
+                // A more robust way to get current tabId might be needed
+                // if content.js isn't triggered by tab events directly.
+                // For simplicity, if this content.js is declared in manifest
+                // it will run in the context of a tab that matches.
+                // We often don't need to specify tabId if injecting into the
+                // tab the content script is running in.
+                // However, to be explicit for MAIN world:
+                func: () => {
+                    const script = document.createElement("script");
+                    script.src = chrome.runtime.getURL("injected_script.js");
+                    (document.head || document.documentElement).appendChild(
+                        script,
+                    );
+                    // The script will load and execute in the MAIN world.
+                    // You might want to remove it after execution if it's large and not needed.
+                    script.onload = () => script.remove();
+                },
+                injectImmediately: true, // Try to inject as soon as possible
+                world: "MAIN", // Execute in the main page context
+            })
+            .then(() => {
+                console.log("Injected main world script.");
+            })
+            .catch((err) => {
+                console.error("Failed to inject main world script:", err);
             });
-        }
-        return devices;
-    };
-
-    // override addEventListener in order to allow injection of synthetic events using `fakeEmit`.
-    var __eventListeners = {};
-    var origAddEventListener = navigator.mediaDevices.addEventListener.bind(navigator.mediaDevices);
-    navigator.mediaDevices.addEventListener = function(name, handler) {
-        if (!__eventListeners[name]) {
-            __eventListeners[name] = [];
-        }
-        __eventListeners[name].push(handler);
-        return origAddEventListener(name, handler);
-    };
-
-    navigator.mediaDevices.fakeEmit = function(name, event) {
-        if (!__eventListeners[name]) {
-            return;
-        }
-        __eventListeners[name].forEach(function(listener) {
-            listener(event);
-        });
-    };
-}+')();';
-
-const script = document.createElement('script');
-script.textContent = inject;
-const parent = document.head || document.documentElement;
-parent.insertBefore(script, parent.firstChild);
-script.parentNode.removeChild(script);
+    }
+}
