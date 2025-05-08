@@ -48,31 +48,37 @@
             return Promise.reject(err);
         }
 
-        if (
-            constraints.video &&
-            constraints.video.deviceId &&
-            (constraints.video.deviceId.exact
-                ? constraints.video.deviceId.exact.indexOf(
-                      "dynamicGum:fake:",
-                  ) === 0
-                : constraints.video.deviceId.indexOf("dynamicGum:fake:") === 0)
-        ) {
-            const canvas = document.createElement("canvas");
-            canvas.width = 640; // TODO: actual width/height.
-            canvas.height = 480;
-            const ctx = canvas.getContext("2d", { alpha: false });
-            ctx.fillStyle = (
-                constraints.video.deviceId.exact
-                    ? constraints.video.deviceId.exact
-                    : constraints.video.deviceId
-            ).substr(16);
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            const videoStream = canvas.captureStream();
-            const videoTrack = videoStream.getVideoTracks()[0];
-            delete constraints.video;
-            const stream = await origGetUserMedia(constraints);
-            stream.addTrack(videoTrack);
-            return stream;
+        function isFakeDeviceId(deviceId) {
+            if (typeof deviceId === "string") {
+                return deviceId.indexOf("dynamicGum:fake:") === 0;
+            } else if (deviceId?.ideal) {
+                return deviceId.ideal.indexOf("dynamicGum:fake:") === 0;
+            }
+            return false;
+        }
+        if (constraints.video?.deviceId) {
+            const deviceId = constraints.video.deviceId;
+            if (
+                (deviceId.exact && isFakeDeviceId(deviceId.exact)) ||
+                isFakeDeviceId(deviceId)
+            ) {
+                const canvas = document.createElement("canvas");
+                canvas.width = 640; // TODO: actual width/height.
+                canvas.height = 480;
+                const ctx = canvas.getContext("2d", { alpha: false });
+                ctx.fillStyle = (
+                    constraints.video.deviceId.exact
+                        ? constraints.video.deviceId.exact
+                        : constraints.video.deviceId
+                ).substr(16);
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                const videoStream = canvas.captureStream();
+                const videoTrack = videoStream.getVideoTracks()[0];
+                delete constraints.video;
+                const stream = await origGetUserMedia(constraints);
+                stream.addTrack(videoTrack);
+                return stream;
+            }
         }
         return origGetUserMedia(constraints);
     };
