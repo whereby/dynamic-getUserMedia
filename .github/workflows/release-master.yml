@@ -1,0 +1,43 @@
+name: Release Master
+on:
+    push:
+        branches:
+            - master
+jobs:
+    release:
+        strategy:
+            matrix:
+                node: ["24.x"]
+                platform: [ubuntu-latest]
+        runs-on: ${{ matrix.platform }}
+        env:
+            NPM_TOKEN: ${{ secrets.WHEREBY_GITHUB_TOKEN }}
+            GITHUB_TOKEN: ${{ secrets.WHEREBY_GITHUB_TOKEN }}
+        steps:
+            - uses: actions/checkout@v6
+
+            - name: Prepare repository
+              run: git fetch --unshallow --tags
+
+            - name: Setup npmrc
+              run: echo "//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}" >> ~/.npmrc
+
+            - name: Use Node.js ${{ matrix.node }}
+              uses: actions/setup-node@v6
+              with:
+                  node-version: ${{ matrix.node }}
+
+            - name: Setup pnpm
+              uses: pnpm/action-setup@v6
+
+            - name: Install
+              run: pnpm install --frozen-lockfile
+
+            - name: Lint
+              run: pnpm lint
+
+            - name: Test
+              run: pnpm test
+
+            - name: Create Release
+              run: pnpm publish --no-git-checks
