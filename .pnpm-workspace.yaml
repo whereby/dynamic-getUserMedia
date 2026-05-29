@@ -1,0 +1,12 @@
+# Prevent supply chain attacks
+# =========================
+
+# Block installs of packages that are newer than 7 days old
+minimumReleaseAge: 10080
+
+# Block transitive deps that pull from git URLs or raw tarball URLs.
+blockExoticSubdeps: true
+
+# Refuse to install if a package's trust level regresses vs. the previous
+# version. Catches publisher-account-takeover.
+trustPolicy: no-downgrade
