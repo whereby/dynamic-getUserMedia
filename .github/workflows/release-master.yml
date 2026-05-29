@@ -10,17 +10,11 @@ jobs:
                 node: ["24.x"]
                 platform: [ubuntu-latest]
         runs-on: ${{ matrix.platform }}
-        env:
-            NPM_TOKEN: ${{ secrets.WHEREBY_GITHUB_TOKEN }}
-            GITHUB_TOKEN: ${{ secrets.WHEREBY_GITHUB_TOKEN }}
         steps:
             - uses: actions/checkout@v6
 
             - name: Prepare repository
               run: git fetch --unshallow --tags
-
-            - name: Setup npmrc
-              run: echo "//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}" >> ~/.npmrc
 
             - name: Use Node.js ${{ matrix.node }}
               uses: actions/setup-node@v6
@@ -41,3 +35,5 @@ jobs:
 
             - name: Create Release
               run: pnpm publish --no-git-checks
+              env:
+                NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
